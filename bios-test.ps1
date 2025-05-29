@@ -1,169 +1,227 @@
-﻿<# This script gets BIOS information from machines and returns a custom object. 
-
-        OsName:          string
-        BIOSVersion:     string
-        Mode:            string
-        Name:            string
-        BitlockerStatus: enumerated type (volume status) 
-        TpmPresent:      boolean
-        TpmEnabled:      boolean
-        TpmVersion:      string
-        AssetTag:        string
-        RAID:            boolean
-        SecureBoot:      boolean
-
-
-        If ran with the '-h' flag, it will display color-coded text.
-
-#>
-
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 
 param 
 (
-    [Parameter(Mandatory=$true)] $name,
-    [switch]$h
+    $name
 )
     
 $ErrorActionPreference = "Stop"
 
-# update this list with known TPM manufacture versions
-$TPM20 = @("1.3.2.8",'7\.2(.*)',"74.8.17568.5511", "1.258.0.0", "1.769.0.0")
+$TPM20 = @("1.3.2.8",'7\.2(.*)',"74.8.17568.5511")
 $TPM12 = @("5.81")
 
-function Check-Online-Status {
+
+function Get-Windows-Version {
     param (
         $name
     )
-    # Checks if the machine is online, and checks that the addresses match. Returns if either of these occur.
 
-    $result = ping $name
+    try{
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Get-ComputerInfo | Select-Object -ExpandProperty OsName}
+    } catch {
 
-    
-    if ($result[2] -match "(\d+\.?)+") { # if the ping returned a reply
-
-        $machineIP = $matches[0]
-        
-        if ($result[1] -match $machineIP) {  # reply & machine IP address match
-
-            $message = $name + " is online. Proceeding to check machine information.`n"
-            Write-Host $message
-
-        } else { # addresses do not match
-
-            $message = $name + " is online, but the reply IP address did not match the machine IP address."
-            Write-Host $message
-            Return
-        }
-
-    } else { # if the ping was not successful
-
-        if ($result[2] -match "Request timed out.") {
-            $message = $name + " is offline."
-
-        } elseif ($result -match "could not find host") {
-            $message = $name + " host could not be found."
-
-        } else {
-            $message = "Something went wrong while pinging the machine."
-        }
-        Write-Host $message
+        Write-Host "Error: Invoke Command to check Windows version failed." -ForegroundColor Red
         Exit
     }
+
+    $message = "OS Version : " + $return +"`n"
+
+    if ($return -match "11") {
+        Write-Host $message -ForegroundColor Green
+    } else {
+        Write-Host $message -ForegroundColor Red
+    }
 }
 
-function Get-Machine-Information {
+function Get-Bitlocker-Status {
+    param(
+        $name
+    )
+
+    try{
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {manage-bde -status}
+    } catch {
+
+        Write-Host "Error: Invoke Command to check Bitlocker status failed." -ForegroundColor Red
+        Exit
+    }
+
+    $status = $return[10].Substring($return[10].Length - 22)
+
+    if ($status -match "Progress")
+    {
+        $message = "Bitlocker status :" + $status +'`n'
+        Write-Host $message 
+    } elseif ($status -match "Decrypted") {
+        Write-Host "Bitlocker Status : Fully Decrypted`n" -ForegroundColor Red
+    } else {
+        Write-Host "Bitlocker Status : Fully Encrypted`n" -ForegroundColor Green
+    }
+}
+
+function Check-Secure-Boot {
     param (
         $name
     )
-    # returns a custom object, with the results from each command
 
-    $results = Invoke-Command -ComputerName $name -ScriptBlock{ `
-        # Windows Version, BIOS Version, Model of the Machine
-        (Get-ComputerInfo | Select-Object OsName, BiosSMBIOSBIOSVersion, CsModel, CsName), `
-
-        # Bitlocker
-        (Get-BitLockerVolume C:| Select-Object -ExpandProperty VolumeStatus), `
-
-        # TPM Information
-        (Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersion), `
     
-        # Asset Tag
-        (Get-WmiObject Win32_SystemEnclosure | Select-Object -ExpandProperty SMBIOSAssetTag), `
+    try{
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Confirm-SecureBootUEFI}
+    } catch {
 
-        # RAID
-        ((Get-WmiObject -Class Win32_SCSIController | Where-Object {$_.DriverName -eq "iaStorAC"}) -ne $null) 
-    
-        # SecureBoot
-        (Confirm-SecureBootUEFI)}
-      
-
-    return $results
-}
-
-function Build-Information-Object {
-    param(
-        $machineInfo # the object returned from Get-Machine-Information
-    )
-
-    $Info_object = [pscustomobject]@{
-        OsName = $machineInfo[0].OsName
-        BIOSVersion = $machineInfo[0].BiosSMBIOSBIOSVersion
-        Model = $machineInfo[0].CsModel
-        Name = $machineInfo[0].CsName
-        BitlockerStatus = $machineInfo[1]
-        TpmPresent = $machineInfo[2].TpmPresent
-        TpmEnabled= $machineInfo[2].TpmEnabled
-        TpmVersion = $machineInfo[2].ManufacturerVersion
-        AssetTag = $machineInfo[3]
-        RAID = $machineInfo[4]
-        SecureBoot = $machineInfo[5]
+        Write-Host "Error: Invoke Command to check Secure Boot failed." -ForegroundColor Red
+        Exit
     }
 
-    return $Info_object
+
+    if ( $return -eq $true ) {
+        Write-Host "Secure Boot : on `n" -ForegroundColor Green
+    } else {
+        Write-Host "Secure Boot : off `n" -ForegroundColor Red
+    }
 }
 
-Check-Online-Status -name $name
-$info = Get-Machine-Information -name $name
-$object = Build-Information-Object -machineInfo $info
+function Check-TPM {
+    param (
+        $name
+    )
+    try {
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersion}
+    } catch {
+         Write-Host "Error: Invoke Command to check TPM 2.0 failed." -ForegroundColor Red
+         Exit
+    }
 
-if ($h)
-{
+    if ($return.TpmPresent -eq $false) {
+        Write-Host "TPM not present `n" -ForegroundColor Red
+    } elseif ($return.TpmEnabled -eq $false) {
+        Write-Host "TPM enabled: no `n" -ForegroundColor Red
+    } else {# TPM is present and enabled
+        $message = "TPM Manufacturer Version : " + $return.ManufacturerVersion + "`n"
+
+        # if the TPM mfg version is not in the known 2.0 list
+        if (($TPM20 | Where-Object {$return.ManufacturerVersion -match $_}) -eq $null) {
+
+            # if the TPM mfg version is in the known 1.2 list
+            if (!(($TPM12 | Where-Object {$return.ManufacturerVersion -match $_}) -eq $null)) {
+                Write-Host $message -ForegroundColor Red
+
+            } else { # the manufacturer version didn't match either known TPM list
+                $message = $message + "Check TPM version. `n"
+                Write-Host $message 
+            }
+
+        } else { # the TPM mfg version is within the known 2.0 list
+            Write-Host $message -ForegroundColor Green
+        }
+    }
+}
+
+function Get-RAID-Status {
+    param (
+        $name
+    )
+    try {
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Get-WmiObject -Class Win32_SCSIController | Where-Object {$_.DriverName -eq "iaStorAC"}}
+    } catch {
+        Write-Host "Error: Invoke Command to check RAID status failed." -ForegroundColor Red
+        Exit
+    }
+
+    if (!($return -eq $null)) {
+        Write-Host "RAID : on`n" -ForegroundColor Red
+    } else {
+        Write-Host "RAID : not on`n" -ForegroundColor Green
+    }
+}
+
+function Get-Asset-Tag {
+    param (
+        $name
+    )
     
-    $message = "Name            : " + $object.Name + "`n" + "Model           : " + $object.Model + "`n" + "BIOSVersion     : " + $object.BIOSVersion + "`n"
+    try {
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Get-WmiObject Win32_SystemEnclosure | Select-Object -ExpandProperty SMBIOSAssetTag}
+    } catch {
+        Write-Host "Error: Invoke Command to check asset tag failed." -ForegroundColor Red
+        Exit
+    }
+
+    if ($return -eq "") {
+        Write-Host "Asset tag has not been set.`n" -ForegroundColor Red
+    } else {
+
+        $tag = $name.Substring($name.Length - 6)
+
+        if ($tag -match '^\d+$') {# computer name has a 6-digit tag at the end
+            if ($return -eq $tag) {
+                Write-Host "Asset tag and tag from machine name match.`n" -ForegroundColor Green    
+
+            } else { # the asset tag is not null & doesn't match machine name
+                $message = "Asset tag descrepency. `nName  :" + $tag + "`nAsset :" + $return + '`n'
+                Write-Host $message -ForegroundColor Red
+            }
+        } else { #computer name does not have 6-digit tag at the end
+            $message = "This machine is likely named incorrectly, but the asset tag is " + $return + '`n'
+            Write-Host $message
+        }
+    }
+}
+
+function Get-BIOS-Version {
+    param (
+        $name
+    )
+  
+    try {
+        $return = Invoke-Command -ComputerName $name -ScriptBlock {Get-ComputerInfo | Select-Object BiosSMBIOSBIOSVersion, CsModel}
+    } catch {
+        Write-Host "Error: Invoke Command to check BIOS version failed." -ForegroundColor Red
+        Exit
+    }
+
+    $message = "BIOS version : " + $return.BiosSMBIOSBIOSVersion + "`n" + "Model : " + $return.CsModel + "`n"
     Write-Host $message
-
-    # OS Name
-    $message = "OsName          : " + $object.OSName + "`n"
-    if ($object.OSName -match "11"){ Write-Host $message -ForegroundColor Green } else { Write-Host $message -ForegroundColor Red }
-
-    #Bitlocker Status
-    $status = Out-String -InputObject $object.BitlockerStatus.Value
-    $message = "BitlockerStatus : " + $status
-    if ($message -match "Decrypted") { Write-Host $message -ForegroundColor Red } else { Write-Host $message -ForegroundColor Green }
-
-    # TPM 
-    if (!$object.TpmPresent){ Write-Host "TPM             : Not Present `n" -ForegroundColor Red} elseif (!$object.TpmEnabled) { Write-Host "TPM             : Not Present `n" }
-    else { # if tpm is present and enabled
-        if (($TPM12 | Where-Object {$object.TPMVersion -match $_}) -ne $null){ write-Host "TPM             : 1.2 `n" -ForegroundColor Red} 
-        elseif (($TPM20 | Where-Object {$object.TPMVersion -match $_}) -ne $null) { Write-Host "TPM             : 2.0 `n" -ForegroundColor Green}
-        else {$message = "TPM Version     : " + $object.TpmVersion + "`n" 
-            Write-Host $message} }
-
-    # Asset Tag
-    if ( $object.AssetTag -eq "" ) { Write-Host "Asset Tag       : Not set `n" -ForegroundColor Red } 
-    elseif ($object.Name -match $object.AssetTag) { $message = 'Asset Tag       : ' + $object.AssetTag + "`n"
-        Write-Host $message -ForegroundColor Green}
-    else { $message = "Asset Tag       : " + $object.AssetTag +" (Discrepency. Machine name : " + $object.Name + "`n"
-        Write-Host $message -ForegroundColor Red }
-
-    #RAID
-    if ($object.RAID){ Write-Host "RAID            : on `n" -ForegroundColor Red } else { Write-Host "RAID            : off `n" -ForegroundColor Green }
-
-    # Secure Boot
-    if ($object.SecureBoot) { Write-Host "Secure Boot     : on `n" -ForegroundColor Green } else { Write-Host "Secure Boot     : off `n" -ForegroundColor Red}
 }
-else
+
+# # # # # # # # # # # #   Checking Online Status     # # # # # # # # # # # #
+
+if ($name -eq $null) {
+    Write-Host "Script requires a machine name."
+    Exit
+}
+
+$return = ping $name
+
+# The script will exit if the machine is offline.
+
+if (!($return[2] -match "Reply"))
 {
-    return $object
+   if ($return[2] -match "Request timed out.") {
+        $message = $name + " is offline."
+   }
+   elseif ($return -match "could not find host") {
+        $message = $name + " host could not be found."
+   }
+   else {
+        $message = "Something went wrong."
+   }
+
+   Write-Host $message
+
+   Exit
 }
+
+# The machine must be online to make it to this point.
+
+$message = $name + " is online. Proceeding to check BIOS settings. `n"
+Write-Host $message 
+
+
+Get-Windows-Version -name $name
+Get-BitLocker-Status -name $name 
+Check-Secure-Boot -name $name
+Check-TPM -name $name
+Get-RAID-Status -name $name
+Get-Asset-Tag -name $name
+Get-BIOS-Version -name $name
