@@ -1,0 +1,1 @@
+﻿# checks & displays Bitlocker encryption progress
