@@ -1,4 +1,23 @@
-﻿#Requires -RunAsAdministrator
+﻿<# This script gets BIOS information from machines and returns a custom object. 
+
+        OsName:          string
+        BIOSVersion:     string
+        Mode:            string
+        Name:            string
+        BitlockerStatus: enumerated type (volume status) 
+        TpmPresent:      boolean
+        TpmEnabled:      boolean
+        TpmVersion:      string
+        AssetTag:        string
+        RAID:            boolean
+        SecureBoot:      boolean
+
+
+        If ran with the '-h' flag, it will display color-coded text.
+
+#>
+
+#Requires -RunAsAdministrator
 
 param 
 (
@@ -8,6 +27,7 @@ param
     
 $ErrorActionPreference = "Stop"
 
+# update this list with known TPM manufacture versions
 $TPM20 = @("1.3.2.8",'7\.2(.*)',"74.8.17568.5511", "1.258.0.0", "1.769.0.0")
 $TPM12 = @("5.81")
 
@@ -15,6 +35,7 @@ function Check-Online-Status {
     param (
         $name
     )
+    # Checks if the machine is online, and checks that the addresses match. Returns if either of these occur.
 
     $result = ping $name
 
@@ -32,7 +53,7 @@ function Check-Online-Status {
 
             $message = $name + " is online, but the reply IP address did not match the machine IP address."
             Write-Host $message
-            Exit
+            Return
         }
 
     } else { # if the ping was not successful
@@ -55,6 +76,7 @@ function Get-Machine-Information {
     param (
         $name
     )
+    # returns a custom object, with the results from each command
 
     $results = Invoke-Command -ComputerName $name -ScriptBlock{ `
         # Windows Version, BIOS Version, Model of the Machine
