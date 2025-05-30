@@ -1,4 +1,8 @@
-﻿<# This script gets BIOS information from machines and returns a custom object. 
+﻿<# 
+    Author: Aliza Rogers :)
+    Date: May 2025
+
+    This script gets BIOS information from machines and returns a custom object. 
 
         OsName:          string
         BIOSVersion:     string
@@ -12,9 +16,12 @@
         RAID:            boolean
         SecureBoot:      boolean
 
+        If ran with the '-h' flag, it will display color-coded text, instead of returning the object.
 
-        If ran with the '-h' flag, it will display color-coded text.
 
+        Notes: 
+            - This was written with the assumption that the asset tag should match the last 6 digits of the machine name. Review lines 162-166 if the NIU naming convention changes.
+            - This script was written for UEFI, and may not work with legacy BIOS machines.
 #>
 
 #Requires -RunAsAdministrator
@@ -129,6 +136,7 @@ $object = Build-Information-Object -machineInfo $info
 
 if ($h)
 {
+    # I tried to make this as squished together as possible, because it is primarily determining what color the text should be. 
     
     $message = "Name            : " + $object.Name + "`n" + "Model           : " + $object.Model + "`n" + "BIOSVersion     : " + $object.BIOSVersion + "`n"
     Write-Host $message
@@ -154,7 +162,7 @@ if ($h)
     if ( $object.AssetTag -eq "" ) { Write-Host "Asset Tag       : Not set `n" -ForegroundColor Red } 
     elseif ($object.Name -match $object.AssetTag) { $message = 'Asset Tag       : ' + $object.AssetTag + "`n"
         Write-Host $message -ForegroundColor Green}
-    else { $message = "Asset Tag       : " + $object.AssetTag +" (Discrepency. Machine name : " + $object.Name + "`n"
+    else { $message = "Asset Tag       : " + $object.AssetTag +" (Discrepency. Machine name : " + $object.Name + "`n" 
         Write-Host $message -ForegroundColor Red }
 
     #RAID
@@ -163,7 +171,6 @@ if ($h)
     # Secure Boot
     if ($object.SecureBoot) { Write-Host "Secure Boot     : on `n" -ForegroundColor Green } else { Write-Host "Secure Boot     : off `n" -ForegroundColor Red}
 }
-else
-{
+else {
     return $object
 }
