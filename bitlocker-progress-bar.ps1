@@ -8,8 +8,8 @@ do {
 
     $scaled = [int]($percent/2)
 
-    $filledBars = "▮" * $scaled
-    $emptyBars = "▯" * (50 - $scaled)
+    $filledBars = "X" * $scaled
+    $emptyBars = "-" * (50 - $scaled)
 
     $message = "Bitlocker Progress: " + $filledBars + $emptyBars + " (${percent}%)`r"
 
@@ -19,3 +19,7 @@ do {
     Start-Sleep -s 2
     
 }while ($percent -lt 100)
+
+Clear-Host
+
+Write-Host "Bitlocker encryption is complete."
