@@ -11,7 +11,7 @@
         BitlockerStatus: enumerated type (volume status) 
         TpmPresent:      boolean
         TpmEnabled:      boolean
-        TpmVersion:      string
+        TpmVersion:      string ("1.2" or "2.0")
         AssetTag:        string
         RAID:            boolean
         SecureBoot:      boolean
@@ -33,10 +33,6 @@ param
 )
     
 $ErrorActionPreference = "Stop"
-
-# update this list with known TPM manufacture versions
-$TPM20 = @("1.3.2.8",'7\.2(.*)',"74.8.17568.5511", "1.258.0.0", "1.769.0.0")
-$TPM12 = @("5.81")
 
 function Check-Online-Status {
     param (
@@ -93,7 +89,7 @@ function Get-Machine-Information {
         (Get-BitLockerVolume C:| Select-Object -ExpandProperty VolumeStatus), `
 
         # TPM Information
-        (Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersion), `
+        (Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersionFull20), `
     
         # Asset Tag
         (Get-WmiObject Win32_SystemEnclosure | Select-Object -ExpandProperty SMBIOSAssetTag), `
@@ -121,7 +117,9 @@ function Build-Information-Object {
         BitlockerStatus = $machineInfo[1]
         TpmPresent = $machineInfo[2].TpmPresent
         TpmEnabled= $machineInfo[2].TpmEnabled
-        TpmVersion = $machineInfo[2].ManufacturerVersion
+        TpmVersion = if (-not $machineInfo[2].TpmEnabled) {""}
+            elseif ($machineInfo[2].ManufacturerVersionFull20 -match "Not Supported"){ "1.2" } 
+            else { "2.0"}
         AssetTag = $machineInfo[3]
         RAID = $machineInfo[4]
         SecureBoot = $machineInfo[5]
@@ -153,10 +151,9 @@ if ($h)
     # TPM 
     if (!$object.TpmPresent){ Write-Host "TPM             : Not Present `n" -ForegroundColor Red} elseif (!$object.TpmEnabled) { Write-Host "TPM             : Not Present `n" }
     else { # if tpm is present and enabled
-        if (($TPM12 | Where-Object {$object.TPMVersion -match $_}) -ne $null){ write-Host "TPM             : 1.2 `n" -ForegroundColor Red} 
-        elseif (($TPM20 | Where-Object {$object.TPMVersion -match $_}) -ne $null) { Write-Host "TPM             : 2.0 `n" -ForegroundColor Green}
-        else {$message = "TPM Version     : " + $object.TpmVersion + "`n" 
-            Write-Host $message} }
+        if ($object.TPMVersion -eq "1.2"){ write-Host "TPM             : 1.2 `n" -ForegroundColor Red} 
+        else { Write-Host "TPM             : 2.0 `n" -ForegroundColor Green} }
+
 
     # Asset Tag
     if ( $object.AssetTag -eq "" ) { Write-Host "Asset Tag       : Not set `n" -ForegroundColor Red } 
