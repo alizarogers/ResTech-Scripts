@@ -4,13 +4,13 @@
 )
 
 #Windows 11 Requirements
-
+$processorTypes = @('Intel(R) Core(TM) i?\d-(8|9|10|11|12|13|14|15)\w*', 'Intel(R) Atom(TM) (x6200FE|x6211E|x6212RE|x6413E|x6414RE|x6425E|x6425RE|x6427FE)')
 $rqdProcessorSpeed = 1000 #Hz
 $rqdCores = 2 
 $rqdMemory = 4294967296 #bytes
 $rqdStorage = 68719476736 #bytes
 $rqdFirmware = "UEFI"
-         
+ 
 
 function get-specs {
     param (
@@ -40,10 +40,11 @@ function get-specs {
 
 $specs = get-specs -name $name
 
-# loop to check each
-#$processorMeetsReq = ($specs[0].CsProcessors.MaxClockSpeed -ge $rqdProcessorSpeed) -and ($processors[0].CsProcessors.NumberofCores -ge $rqdCores)
 
-#$memoryMeetsReq = ($specs[0].CsTotalPhysicalMemory -ge $rqdMemory)
+$processorMeetsReq = ($specs[0].CsProcessors.MaxClockSpeed -ge $rqdProcessorSpeed) -and ($specs[0].CsProcessors.NumberofCores -ge $rqdCores) -and ($specs[0].CsProcessors.Architecture -match "x64")
+
+$memoryMeetsReq = ($specs[0].CsTotalPhysicalMemory -ge $rqdMemory)
+
 
 # TPM
 $tpmMeetsReq = -not ($specs[1] -match "Not Supported")
@@ -59,3 +60,9 @@ $isEligable = $tpmMeetsReq -and $storeageMeetReq -and $firmwareMeetReq
 
 Write-Host "T/F, this is eligible for Windows 11 "
 Write-Host $isEligable
+
+
+
+
+#processors
+
