@@ -1,8 +1,10 @@
 ﻿<# 
     Author: Aliza Rogers :)
-    Date: May 2025
+    Creation Date: May 2025
+    Last Updated: June 16, 2025
 
     This script gets BIOS information from machines and returns a custom object. 
+    If the machine is not online, it will retrn an empty object.
 
         OsName:          string
         BIOSVersion:     string
@@ -34,72 +36,37 @@ param
     
 $ErrorActionPreference = "Stop"
 
-function Check-Online-Status {
-    param (
-        $name
-    )
-    # Checks if the machine is online, and checks that the addresses match. Returns if either of these occur.
-
-    $result = ping $name
-
-    
-    if ($result[2] -match "(\d+\.?)+") { # if the ping returned a reply
-
-        $machineIP = $matches[0]
-        
-        if ($result[1] -match $machineIP) {  # reply & machine IP address match
-
-            $message = $name + " is online. Proceeding to check machine information.`n"
-            Write-Host $message
-
-        } else { # addresses do not match
-
-            $message = $name + " is online, but the reply IP address did not match the machine IP address."
-            Write-Host $message
-            Return
-        }
-
-    } else { # if the ping was not successful
-
-        if ($result[2] -match "Request timed out.") {
-            $message = $name + " is offline."
-
-        } elseif ($result -match "could not find host") {
-            $message = $name + " host could not be found."
-
-        } else {
-            $message = "Something went wrong while pinging the machine."
-        }
-        Write-Host $message
-        Exit
-    }
-}
 
 function Get-Machine-Information {
     param (
         $name
     )
+
     # returns a custom object, with the results from each command
 
-    $results = Invoke-Command -ComputerName $name -ScriptBlock{ `
-        # Windows Version, BIOS Version, Model of the Machine
-        (Get-ComputerInfo | Select-Object OsName, BiosSMBIOSBIOSVersion, CsModel, CsName), `
+    try {
+        $results = Invoke-Command -ComputerName $name -ScriptBlock{ `
+            # Windows Version, BIOS Version, Model of the Machine
+            (Get-ComputerInfo | Select-Object OsName, BiosSMBIOSBIOSVersion, CsModel, CsName), `
 
-        # Bitlocker
-        (Get-BitLockerVolume C:| Select-Object -ExpandProperty VolumeStatus), `
+            # Bitlocker
+            (Get-BitLockerVolume C:| Select-Object -ExpandProperty VolumeStatus), `
 
-        # TPM Information
-        (Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersionFull20), `
+            # TPM Information
+            (Get-Tpm | Select-Object TpmPresent, TpmEnabled, ManufacturerVersionFull20), `
     
-        # Asset Tag
-        (Get-WmiObject Win32_SystemEnclosure | Select-Object -ExpandProperty SMBIOSAssetTag), `
+            # Asset Tag
+            (Get-WmiObject Win32_SystemEnclosure | Select-Object -ExpandProperty SMBIOSAssetTag), `
 
-        # RAID
-        ((Get-WmiObject -Class Win32_SCSIController | Where-Object {$_.DriverName -eq "iaStorAC"}) -ne $null) 
+            # RAID
+            ((Get-WmiObject -Class Win32_SCSIController | Where-Object {$_.DriverName -eq "iaStorAC"}) -ne $null) 
     
-        # SecureBoot
-        (Confirm-SecureBootUEFI)}
-      
+            # SecureBoot
+            (Confirm-SecureBootUEFI)}
+      } catch {
+            Write-Host "An error occured while retrieving computer information via Invoke-Command."
+            Exit
+      }
 
     return $results
 }
@@ -128,7 +95,22 @@ function Build-Information-Object {
     return $Info_object
 }
 
-Check-Online-Status -name $name
+if (!(Test-Connection -ComputerName $name -Count 1 -Quiet)) {
+    if ($h) {
+        $message = $name + " is not online."
+        Write-Host $message
+        return
+    }
+    else {
+       return [pscustomobject]@{}
+    }
+         
+}
+elseif ($h){ # if machine is online & -h flag
+    $message = $name + " is online. Proceeding to check BIOS information. `n"
+    Write-Host $message
+}
+
 $info = Get-Machine-Information -name $name
 $object = Build-Information-Object -machineInfo $info
 
