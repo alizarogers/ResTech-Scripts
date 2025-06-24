@@ -4,6 +4,10 @@
 )
 
 #Windows 11 Requirements
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 $processorTypes = @('Intel(R) Core(TM) i?\d-(8|9|10|11|12|13|14|15)\w*', 'Intel(R) Atom(TM) (x6200FE|x6211E|x6212RE|x6413E|x6414RE|x6425E|x6425RE|x6427FE)')
 $rqdProcessorSpeed = 1000 #Hz
 $rqdCores = 2 
