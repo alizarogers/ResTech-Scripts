@@ -39,7 +39,7 @@ function Set-AssetTag { # [untested] Returns whether the operation was successfu
     param ( [Parameter(Mandatory=$true)] $assetTag )
 
     if ( -not (Confirm-Module)) {
-        Write-Error "An error occured while installing the Dell BIOS Powershell module. (Necessary for enabling secure boot.)"
+        Write-Error "An error occured while installing the Dell BIOS Powershell module. (Necessary for setting the asset tag.)"
         Return $false
     }
 
@@ -81,3 +81,26 @@ function Enable-SecureBoot { # Returns whether the operation was successful or n
 
     Return $true
 }
+
+function Switch-toAHCI { # UNTESTED
+
+    if ( -not (Confirm-Module)) {
+        Write-Error "An error occured while installing the Dell BIOS Powershell module. (Necessary for switching to AHCI.)"
+        Return $false
+    }
+
+    if ((Get-Item DellSmbios:\SystemConfiguration\EmbSataRaid).CurrentValue -eq "Raid")
+    {
+        Set-Item DellSmbios:\SystemConfiguration\EmbStataRaid "Ahci"
+    }
+
+    Set-ItemProperty -path "Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" -Value { 
+        bcdedit /deletevalue safeboot
+        shutdown \r }
+
+    bcdedit /set safeboot network
+    shutdown \r
+}
+
+ 
+
