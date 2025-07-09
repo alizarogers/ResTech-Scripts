@@ -1,10 +1,11 @@
-function Confirm-Module { # [untested] Returns whether the operation was successful or not. 
+function Confirm-Module { # Returns whether the operation was successful or not. 
     # This function must be ran with administrator privileges. 
-    param ( $moduleName = "DellBIOSProvider" )
+    param ( $moduleName = "DellBIOSProvider")
 
     # if the module is not installed, install it
     if (-not $(Get-Module -Name $moduleName -ListAvailable)){ 
         try {
+            # NOTE: Modules may require command line confirmation
             Install-Module -Name $moduleName
         } catch {
             Write-Error "There was an error while installing $moduleName. (Check admin privileges.)"
@@ -13,18 +14,21 @@ function Confirm-Module { # [untested] Returns whether the operation was success
     }
     
     try {
-        Import-Module DellBIOSProvider -ErrorAction Stop # adding this flag, since try-catch only works on terminating errors
+        Import-Module $moduleName -ErrorAction Stop # adding this flag, since try-catch only works on terminating errors
     } catch {
         Write-Error "There was an error while importing $modulename."
         Return $false
     }
 
-    # in case import-module doesn't throw an error, but didn't create the DellSmbios drive
-    try {
-        ls DellSmbios:/
-    } catch {
-        Write-Error "There was an issue with accessing the DellSMbios drive."
-        Return $false
+    # DellSmbios-specific test
+    if ($moduleName -eq "DellBIOSProvider")
+    {
+        try {
+            $catch = Test-Path "DellSmbios:/"
+        } catch {
+            Write-Error "There was an issue with accessing the DellSMbios drive."
+            Return $false
+        }
     }
 
     Return $true
@@ -49,7 +53,7 @@ function Set-AssetTag { # [untested] Returns whether the operation was successfu
     Return $true
 }
 
-function Enable-SecureBoot { # [untested] Returns whether the operation was successful or not. 
+function Enable-SecureBoot { # Returns whether the operation was successful or not. 
 
     if ( -not (Confirm-Module)) {
         Write-Error "An error occured while installing the Dell BIOS Powershell module. (Necessary for enabling secure boot.)"
@@ -57,8 +61,7 @@ function Enable-SecureBoot { # [untested] Returns whether the operation was succ
     }
 
     # confirm that legacy option ROMs option is disabled (necesarry to turn secure boot on)
-    Set-Location DellSmbios:\AdvancedBootOptions\
-    if ((Get-Item .\LegacyOrom).CurrentValue -eq "Enabled") {
+    if ((ls DellSmbios:\AdvancedBootOptions\).count -gt 1 -and (Get-Item DellSmbios:\AdvancedBootOptions\LegacyOrom).CurrentValue -eq "Disabled") {
         try {
             Set-Item DellSmbios:\AdvancedBootOptions\LegacyOrom "Disabled"
         } catch {
@@ -66,5 +69,15 @@ function Enable-SecureBoot { # [untested] Returns whether the operation was succ
             Return $false
         }  
     }
-}
 
+    if ((Get-Item DellSmbios:\SecureBoot\SecureBoot).CurrentValue -eq "Disabled")
+    {
+        try {
+            Set-Item DellSmbios:\SecureBoot\SecureBoot "Enabled"
+        } catch {
+            Write-Error "There was an error while trying to enable secure boot."
+        }
+    }
+
+    Return $true
+}
