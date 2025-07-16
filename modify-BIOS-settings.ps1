@@ -94,13 +94,13 @@ function Switch-toAHCI { # UNTESTED
         Set-Item DellSmbios:\SystemConfiguration\EmbStataRaid "Ahci"
     }
 
-    Set-ItemProperty -path "Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" -Value { 
-        bcdedit /deletevalue safeboot
-        shutdown \r }
-
     bcdedit /set safeboot network
     shutdown \r
 }
 
+function Post-AHCIBoot {
+    bcdedit /deletevalue safeboot;
+    shutdown \r
+}
  
 
